@@ -1,0 +1,94 @@
+# =============================================================================
+# Google CES (GECX) connector - paste into your existing config/config.yaml
+# =============================================================================
+#
+# PART A - add this block under your existing  connectors:  section.
+#          Put it AFTER your existing connectors (e.g. after dialogflow_cx_connector)
+#          so the agent numbering your CVP application already uses does not move.
+#          Keep the two-space indentation so it sits inside "connectors:".
+#
+# Replace the three YOUR_... values. They are all in the CES app URL:
+#   https://ces.cloud.google.com/projects/<PROJECT_ID>/locations/<LOCATION>/apps/<APPLICATION_ID>
+# -----------------------------------------------------------------------------
+
+  gecx_connector:
+    type: "gecx_connector"
+    class: "GECXConnector"
+    module: "connectors.gecx_connector"
+    config:
+      project_id: "YOUR_GCP_PROJECT_ID"
+      location: "us"                       # CES region of the app (us / eu / ...)
+      application_id: "YOUR_CES_APP_ID"
+      language_code: "en-US"
+
+      # Google sign-in - use the SAME method as your Dialogflow CX connector.
+      # Workload Identity Federation: put the same credential file path DF CX uses
+      # ("type": "external_account"), or DELETE this line if the gateway service
+      # sets GOOGLE_APPLICATION_CREDENTIALS. A service-account JSON key also works.
+      # The identity needs the role "CES Client" (roles/ces.client). Absolute path.
+      service_account_key: "/opt/byova-gateway/config/wif-config.json"
+
+      # Audio: CVP/VVB is 8 kHz mu-law in both directions (tested values)
+      input_sample_rate_hertz: 8000
+      input_audio_encoding: "MULAW"
+      output_sample_rate_hertz: 8000
+      output_audio_encoding: "MULAW"
+      force_input_format: "wxcc"
+
+      # Cisco tested defaults - leave as is unless support asks you to change them
+      suppress_long_leading_audio: true
+      output_leading_audio_min_ms: 5000
+      output_speech_rms_threshold: 200
+      output_speech_start_frames: 2
+      output_speech_preroll_ms: 100
+      initial_message: "Hello"             # sent to CES to trigger the greeting
+      enable_partial_responses: true
+      barge_in_enabled: false              # the gateway still sends CVP prompts bargeable (required by VVB)
+      turn_response_timeout_seconds: 30
+      endpointing_silence_ms: 2000
+      input_preroll_ms: 500
+      input_holdback_ms: 250
+      input_pause_preroll_ms: 250
+      input_stream_chunk_ms: 100
+      input_queue_max_chunks: 20
+      input_queue_put_timeout_ms: 50
+      terminal_response_grace_seconds: 3
+
+      # OPTIONAL - CVP session parameters -> CES session variables.
+      # Each name must be declared as a variable (type Text) in the CES app.
+      # List form keeps the name; mapping form renames: { Name: customer_name }
+      # session_variables:
+      #   - "Name"
+
+      # OPTIONAL - end_session fields sent back to CVP on a transfer, in the
+      # TRANSFER_TO_AGENT event metadata (the summary is always sent).
+      # forward_end_session_fields:
+      #   - "reason"
+      #   - "Name"
+
+      # Agent name(s) offered to CVP. CVP "Agent ID" must match this exactly.
+      agents:
+        - "gecx"          # "ces" is already used by your dialogflow_cx_ces connector
+
+# -----------------------------------------------------------------------------
+# PART B - add this as a TOP-LEVEL section (no indentation), e.g. at the end of
+#          the file. Only read if your main.py passes it to the gateway (see
+#          docs/main_py_optional_change.md); otherwise the same values are the
+#          built-in defaults, so adding it is harmless either way.
+# -----------------------------------------------------------------------------
+
+voice_activity_detection:
+  threshold: 0.5
+  start_debounce_ms: 96
+  end_silence_ms: 1000
+  speech_end_grace_ms: 1000
+  recognition_assisted_endpointing_enabled: false
+  recognition_assisted_grace_ms: 200
+  fallback_sample_rate_hertz: 8000
+
+# -----------------------------------------------------------------------------
+# OPTIONAL - under your existing top-level  gateway:  section.
+#   cvp_compat_audio: true   (default when omitted) - REQUIRED for CVP/VVB.
+#   Only set it to false if this gateway serves Webex Contact Center directly
+#   instead of CVP. Read only when main.py passes it (see main_py_optional_change.md).
+# -----------------------------------------------------------------------------

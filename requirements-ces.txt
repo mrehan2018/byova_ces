@@ -1,0 +1,26 @@
+# Extra Python packages for the Google CES (GECX) connector.
+# Your existing BYOVA requirements stay as they are; install these on top.
+#
+# STEP 1 - install PyTorch CPU-only FIRST (otherwise pip downloads ~2.5 GB of
+#          NVIDIA CUDA libraries you do not need):
+#   pip install "torch>=2.5.1,<2.6" "torchaudio>=2.5.1,<2.6" --index-url https://download.pytorch.org/whl/cpu
+#
+# STEP 2 - then install this file:
+#   pip install -r requirements-ces.txt
+
+# Google CX Agent Studio / CES runtime client (BidiRunSession)
+google-cloud-ces>=0.7.0
+google-api-core>=2.19.0
+google-auth>=2.29.0
+google-auth-oauthlib>=1.2.0
+googleapis-common-protos>=1.63.0
+
+# Gateway voice-activity detection used by the CES connector (Silero VAD)
+silero-vad==6.2.1
+
+# Already part of a standard BYOVA install - listed so a missing one is caught
+grpcio-health-checking>=1.62.0
+numpy>=1.26
+
+# Python 3.13+ only: audioop was removed from the standard library
+audioop-lts; python_version >= "3.13"
