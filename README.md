@@ -6,6 +6,7 @@ This repo adds a **Google CES (CX Agent Studio) voice agent** to a BYOVA gateway
 |---|---|
 | **[REPORT.md](REPORT.md)** | What we reviewed, what changes, proof that your changes are kept, test results, risks |
 | **[INSTALL_FOR_YOUR_GATEWAY.md](INSTALL_FOR_YOUR_GATEWAY.md)** | Step-by-step install for your gateway |
+| **[UPDATE_PARAMETERS.md](UPDATE_PARAMETERS.md)** | Update: pass values CVP ↔ CES (Name in; account_name / zipcode back to CVP) |
 | [docs/CES_Adapter_Install_Guide_Linux_v2.1.docx](docs/CES_Adapter_Install_Guide_Linux_v2.1.docx) | Full guide: CES agent rules, settings, troubleshooting |
 
 ## Quick install

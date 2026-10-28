@@ -201,11 +201,11 @@ This restores the four replaced files, `config.yaml` and `main.py`, removes the 
 Compare these on the server with `sha256sum src/*/*.py` after installing.
 
 ```
-a7f5781dee560714b93d3ede92edf79e1d2c7a634dcd53bcd0d602de27883c84  src/connectors/gecx_connector.py
+b9d91d24ca46c10620124e4d2fc3c771838ffd9859c87eacd3ba31087f22414a  src/connectors/gecx_connector.py
 57aed8b03f64d21a4577b7c83f1d3088c84bb487a888841ed5c091022e5c1942  src/connectors/i_vendor_connector.py
 76c30770ac51d42d226c9659829f71f08d970118593f584de51c6c2b1a3a9577  src/core/health_service.py
 d6094626f9fa295b27fd040c38db4a81ea1ca9092d980c23701debd53bf7e31b  src/core/virtual_agent_router.py
-3eaafd785f2b444b8a82bfca6e2d11676812248766e8b4e72669dabe07cca69a  src/core/wxcc_gateway_server.py
+3cf19f1d71a56c23312fe88c09a9d4abae76f9b4ad6e38a98d9a20aed45d4ad1  src/core/wxcc_gateway_server.py
 41a82de8cdb80815bfc7acb0115fa84168b69a9eb2267dd4765a6713856b7ebf  src/utils/audio_normalizer.py
 e6da483f962a1706b1f5f4f3f1de829673cb54edbb187a6f29d6302d47468cdb  src/utils/silero_speech_boundary.py
 59d83965b2e96c5d90c025cb115f5f0ed312db0d3ba625474ad93dcdc6a36e29  src/utils/telephony_audio.py

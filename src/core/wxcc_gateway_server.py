@@ -1331,9 +1331,14 @@ class ConversationProcessor:
                 output_event = OutputEvent()
                 output_event.event_type = OutputEvent.EventType.SESSION_END
                 output_event.name = "session_ended"
+                # CES end_session fields (forward_end_session_fields) for the CVP application
+                end_metadata = connector_response.get("transfer_metadata") or {}
+                if isinstance(end_metadata, dict) and end_metadata:
+                    output_event.metadata.update(end_metadata)
                 va_response.output_events.append(output_event)
                 self.logger.info(
-                    f"Sent SESSION_END event to WxCC for conversation {self.conversation_id} (session_end message)"
+                    f"Sent SESSION_END event to WxCC for conversation {self.conversation_id} (session_end message"
+                    f"{', fields=' + str(sorted(end_metadata)) if isinstance(end_metadata, dict) and end_metadata else ''})"
                 )
                 self.can_be_deleted = True
 

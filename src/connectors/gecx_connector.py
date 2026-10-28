@@ -1074,6 +1074,7 @@ class GECXStreamingSession:
             text=response_text or "",
             barge_in_enabled=False,
             response_type="final",
+            **self._forwarded_end_session_fields(decision.metadata.get("end_session", {})),
         )
 
     def _request_generator(self) -> Iterator[Any]:
@@ -1665,6 +1666,13 @@ class GECXStreamingSession:
             return {}
         fields = self._end_session_fields(metadata)
         selected = {k: v for k, v in fields.items() if k in allowed}
+        missing = sorted(name for name in allowed if name not in selected)
+        self.logger.info(
+            "[%s] [GECX] end_session fields for CVP: %s%s",
+            self.conversation_id,
+            sorted(selected),
+            f" (not sent by the agent: {missing})" if missing else "",
+        )
         return {"transfer_metadata": selected} if selected else {}
 
     @staticmethod
