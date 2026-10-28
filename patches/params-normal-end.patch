@@ -1,0 +1,46 @@
+diff --git a/src/connectors/gecx_connector.py b/src/connectors/gecx_connector.py
+index 293e259..1f513fe 100644
+--- a/src/connectors/gecx_connector.py
++++ b/src/connectors/gecx_connector.py
+@@ -1074,6 +1074,7 @@ class GECXStreamingSession:
+             text=response_text or "",
+             barge_in_enabled=False,
+             response_type="final",
++            **self._forwarded_end_session_fields(decision.metadata.get("end_session", {})),
+         )
+ 
+     def _request_generator(self) -> Iterator[Any]:
+@@ -1665,6 +1666,13 @@ class GECXStreamingSession:
+             return {}
+         fields = self._end_session_fields(metadata)
+         selected = {k: v for k, v in fields.items() if k in allowed}
++        missing = sorted(name for name in allowed if name not in selected)
++        self.logger.info(
++            "[%s] [GECX] end_session fields for CVP: %s%s",
++            self.conversation_id,
++            sorted(selected),
++            f" (not sent by the agent: {missing})" if missing else "",
++        )
+         return {"transfer_metadata": selected} if selected else {}
+ 
+     @staticmethod
+diff --git a/src/core/wxcc_gateway_server.py b/src/core/wxcc_gateway_server.py
+index c0ff6d1..63e3ed7 100644
+--- a/src/core/wxcc_gateway_server.py
++++ b/src/core/wxcc_gateway_server.py
+@@ -1331,9 +1331,14 @@ class ConversationProcessor:
+                 output_event = OutputEvent()
+                 output_event.event_type = OutputEvent.EventType.SESSION_END
+                 output_event.name = "session_ended"
++                # CES end_session fields (forward_end_session_fields) for the CVP application
++                end_metadata = connector_response.get("transfer_metadata") or {}
++                if isinstance(end_metadata, dict) and end_metadata:
++                    output_event.metadata.update(end_metadata)
+                 va_response.output_events.append(output_event)
+                 self.logger.info(
+-                    f"Sent SESSION_END event to WxCC for conversation {self.conversation_id} (session_end message)"
++                    f"Sent SESSION_END event to WxCC for conversation {self.conversation_id} (session_end message"
++                    f"{', fields=' + str(sorted(end_metadata)) if isinstance(end_metadata, dict) and end_metadata else ''})"
+                 )
+                 self.can_be_deleted = True
+ 

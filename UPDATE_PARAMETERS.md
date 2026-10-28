@@ -19,6 +19,8 @@ All of your own server changes are still present. You can check with `python3 ve
 
 ## Steps
 
+> Prefer to edit the two files by hand? See **[MANUAL_UPDATE_PARAMETERS.md](MANUAL_UPDATE_PARAMETERS.md)**: three small edits, or one patch file.
+
 ```bash
 # 1. get the update
 cd /tmp/byova_ces && git pull            # or: cd /tmp && rm -rf byova_ces && git clone https://github.com/mrehan2018/byova_ces.git
