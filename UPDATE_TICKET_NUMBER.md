@@ -34,7 +34,7 @@ echo "backup in $B"
 
 # 3. check that the new code is in place (each should print 1)
 grep -c "end_session params from agent" $GW/src/connectors/gecx_connector.py
-grep -c "fields=%s" $GW/src/core/wxcc_gateway_server.py
+grep -c "', fields='" $GW/src/core/wxcc_gateway_server.py
 ```
 
 **4. config.yaml.** In your CES connector block (`gecx_connector_tc_anurag`), add these lines under `config:`, at the same indentation as `language_code`. If you already have a `forward_end_session_fields` list, add `ticket_number` to it rather than adding a second list.
