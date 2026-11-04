@@ -1,0 +1,44 @@
+diff --git a/src/connectors/gecx_connector.py b/src/connectors/gecx_connector.py
+index 1f513fe..6c70812 100644
+--- a/src/connectors/gecx_connector.py
++++ b/src/connectors/gecx_connector.py
+@@ -1673,6 +1673,14 @@ class GECXStreamingSession:
+             sorted(selected),
+             f" (not sent by the agent: {missing})" if missing else "",
+         )
++        if selected and getattr(self.connector, "log_end_session_values", False):
++            # Test aid only (config log_end_session_values: true). Values can hold
++            # customer data, so keep this off in production.
++            self.logger.warning(
++                "[%s] [GECX] end_session values for CVP (log_end_session_values is on): %s",
++                self.conversation_id,
++                selected,
++            )
+         return {"transfer_metadata": selected} if selected else {}
+ 
+     @staticmethod
+@@ -1811,6 +1819,14 @@ class GECXStreamingSession:
+             conversation_id,
+             sorted(metadata),
+         )
++        end_params = metadata.get("params")
++        if isinstance(end_params, Mapping):
++            # Names only, never values (e.g. ['ticket_number']).
++            self.logger.info(
++                "[%s] [GECX] end_session params from agent: %s",
++                conversation_id,
++                sorted(str(k) for k in end_params),
++            )
+         if self.connector.log_handoff_summary_diagnostics:
+             diagnostic = self._handoff_summary_diagnostic(metadata)
+             self.logger.info(
+@@ -2016,6 +2032,9 @@ class GECXConnector(IVendorConnector):
+         self.forward_end_session_fields = [
+             str(name) for name in (config.get("forward_end_session_fields") or [])
+         ]
++        # Test aid: also log the VALUES of the forwarded fields. Off by default
++        # (Cisco rule: never log values); turn off again after testing.
++        self.log_end_session_values = bool(config.get("log_end_session_values", False))
+         self.enable_partial_responses = config.get("enable_partial_responses", True)
+         # Keep prompt interruption opt-in until the GECX barge-in path is
+         # validated end to end. Greeting and caller-owned output are always
