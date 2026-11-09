@@ -29,6 +29,8 @@ Your gateway was based on an older Cisco release. Cisco's CES connector needs Ci
 | **CES → CVP values** (`forward_end_session_fields`, e.g. `ticket_number`) on a transfer and on a normal end | `gecx_connector.py`, `wxcc_gateway_server.py` | Return agent data to CVP. Only the fields you list are passed | **Off** unless set in config.yaml |
 | **Log lines:** call lifecycle, the names of the values passed, and `end_session params from agent` | both files | Troubleshooting | Names only, never values |
 | **`log_end_session_values`:** logs the values of the passed fields | `gecx_connector.py` | Testing only | **Off.** Turn it on only for a test call |
+| **Bug fix: continued caller speech** really opens a new CES turn ([UPDATE_CONTINUED_SPEECH.md](UPDATE_CONTINUED_SPEECH.md)) | `wxcc_gateway_server.py` | Cisco's code never ran the connector's "speech started" step here, so CES never heard the caller and replies were dropped until the 30 s timeout. Same bug in Cisco's current release | Always on (CES only) |
+| **Bug fix: CVP re-entry** after a session ended starts a fresh session | `wxcc_gateway_server.py` | The re-entry was ignored and VVB waited 15 s (`error.noresource`) | Always on |
 
 ## Cisco's rules that we follow
 

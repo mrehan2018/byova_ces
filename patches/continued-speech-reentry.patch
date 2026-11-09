@@ -1,0 +1,104 @@
+--- a/src/core/wxcc_gateway_server.py	2026-11-09 11:57:21.361477900 -0600
++++ b/src/core/wxcc_gateway_server.py	2026-11-09 11:57:21.394162400 -0600
+@@ -103,6 +103,9 @@
+         self._caller_input_acknowledged = False
+         self._speech_response_pending = False
+         self._async_task_count = 0
++        # byova_ces fix: responses returned when continued caller speech
++        # opens a new CES input turn (see _continue_pending_speech_turn).
++        self._continued_turn_responses: List[Dict[str, Any]] = []
+         vad_settings = dict(vad_config or {})
+         self.vad_fallback_sample_rate_hertz = vad_settings.get(
+             "fallback_sample_rate_hertz", 8000
+@@ -389,7 +392,7 @@
+             if not self._speech_response_pending:
+                 return False
+             self._caller_input_acknowledged = False
+-        self.router.route_request(
++        boundary_response = self.router.route_request(
+             self.virtual_agent_id,
+             "handle_speech_boundary",
+             self.conversation_id,
+@@ -400,6 +403,18 @@
+                 "speech_boundary": {"kind": "speech_started"},
+             },
+         )
++        # byova_ces fix: handle_speech_boundary is a generator, so its code runs
++        # only when the result is iterated. Without this loop the connector never
++        # opened the new input turn: the caller's speech was not sent to CES and
++        # every CES reply was suppressed until the 30 s turn timeout.
++        if (
++            boundary_response is not None
++            and hasattr(boundary_response, "__iter__")
++            and not isinstance(boundary_response, (dict, str, bytes))
++        ):
++            self._continued_turn_responses = [
++                response for response in boundary_response if response is not None
++            ]
+         self.logger.info(
+             "Continued caller speech while the CES response was pending; "
+             "suppressed duplicate WxCC START_OF_INPUT for conversation %s",
+@@ -593,6 +608,11 @@
+                     and signal.kind == "speech_started"
+                     and self._continue_pending_speech_turn()
+                 ):
++                    responses = self._continued_turn_responses
++                    self._continued_turn_responses = []
++                    yield from self._iter_grpc_connector_responses(
++                        responses, include_single_response=False
++                    )
+                     continue
+                 if signal.kind == "speech_started":
+                     with self._speech_end_lock:
+@@ -1972,6 +1992,27 @@
+                             context.set_details(f"Agent not found: {agent_id}")
+                             return
+ 
++                        # byova_ces fix: CVP re-enters the virtual agent with the
++                        # same conversation ID right after a session ended. The old
++                        # session used to answer "session already started" with
++                        # nothing, and VVB waited 15 s (error.noresource). Close the
++                        # ended session and start a fresh one instead.
++                        if (
++                            conversation_id in self.conversations
++                            and self.conversations[conversation_id].can_be_deleted
++                            and request.HasField("event_input")
++                            and request.event_input.event_type
++                            == EventInput.EventType.SESSION_START
++                        ):
++                            self.logger.info(
++                                "Starting a fresh session for %s: SESSION_START "
++                                "arrived after the previous session ended (CVP re-entry)",
++                                conversation_id,
++                            )
++                            self._cleanup_conversation(
++                                conversation_id, termination_reason="completed"
++                            )
++
+                         if conversation_id not in self.conversations:
+                             processor = ConversationProcessor(
+                                 conversation_id,
+@@ -2180,7 +2221,22 @@
+             # processor and vendor session across that continuation boundary.
+             # Connector opt-in applies only to cancellation and actual request
+             # stream failures, where no continuation is expected.
+-            if conversation_id and conversation_id in self.conversations:
++            current_processor = (
++                self.conversations.get(conversation_id) if conversation_id else None
++            )
++            if (
++                processor is not None
++                and current_processor is not None
++                and current_processor is not processor
++            ):
++                # byova_ces fix: a CVP re-entry already replaced this stream's
++                # session. Leave the new session alone.
++                self.logger.info(
++                    "Stream for %s ended after a re-entry replaced its session; "
++                    "keeping the new session",
++                    conversation_id,
++                )
++            elif conversation_id and conversation_id in self.conversations:
+                 processor = self.conversations[conversation_id]
+                 agent_id = processor.virtual_agent_id
+                 cleanup_on_stream_end = (
