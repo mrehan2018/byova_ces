@@ -1,3 +1,35 @@
+byova_ces update: continued caller speech, CVP re-entry, and the clean-up race
+
+File:     src/core/wxcc_gateway_server.py (only this file)
+Base:     the file from the ticket_number update (byova_ces e7dbbc4)
+Size:     6 edits, 66 lines added, 5 lines changed. No config.yaml change.
+Details:  UPDATE_CONTINUED_SPEECH.md (why, install, checks, undo)
+
+Fixes three bugs in Cisco's gateway server code (also in Cisco's current
+release eb2a1e3):
+
+1. Continued caller speech (edits A, B, C). When the caller speaks again
+   while a CES reply is pending, Cisco's code called the connector's
+   "speech started" handler but never ran it (it is a generator). CES never
+   heard the caller, and every reply was dropped until the 30 s turn timeout.
+   The handler now runs, so the new CES turn really opens.
+
+2. CVP re-entry (edits D, E). A SESSION_START that arrives right after a
+   session ended (same conversation ID) was ignored, and VVB waited 15 s
+   (error.noresource). It now closes the ended session and starts a fresh
+   one, and the old stream no longer cleans up the new session.
+
+3. Clean-up race (edit F). When the caller hangs up, the cancelled stream
+   and CVP's SESSION_END stream can clean up the same call at once, and
+   the second one raised KeyError in _cleanup_conversation. The entry is
+   now removed only if it is still the same session.
+
+Apply from the gateway folder:
+    patch -p1 --dry-run < continued-speech-reentry.patch   # check only
+    patch -p1          < continued-speech-reentry.patch
+If the dry run reports FAILED, use tools/apply_continued_speech_fix.py.
+Check: grep -c "byova_ces fix" src/core/wxcc_gateway_server.py  -> 5
+
 --- a/src/core/wxcc_gateway_server.py	2026-11-10 11:23:44.469979500 -0600
 +++ b/src/core/wxcc_gateway_server.py	2026-11-10 11:23:44.504657600 -0600
 @@ -103,6 +103,9 @@
