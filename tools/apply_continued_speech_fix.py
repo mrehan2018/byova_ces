@@ -1,7 +1,8 @@
-"""Apply the continued-speech + CVP re-entry fixes to wxcc_gateway_server.py.
+"""Apply the continued-speech, CVP re-entry and cleanup-race fixes to wxcc_gateway_server.py.
 
 Usage: python apply_continued_speech_fix.py <path to wxcc_gateway_server.py>
 Every edit is anchored on text that must occur exactly once; nothing else changes.
+Edits that are already in the file are skipped, so running it twice is safe.
 """
 import io
 import sys
@@ -127,15 +128,46 @@ EDITS = [
         "                processor = self.conversations[conversation_id]\n"
         "                agent_id = processor.virtual_agent_id\n",
     ),
+    # F. two streams cleaning up the same call at once must not raise KeyError
+    (
+        "        if conversation_id in self.conversations:\n"
+        "            try:\n"
+        "                self.conversations[conversation_id].cleanup(termination_reason)\n"
+        "            except Exception as e:\n"
+        "                self.logger.warning(\n"
+        "                    f\"Error cleaning up conversation {conversation_id}: {e}\"\n"
+        "                )\n"
+        "            finally:\n"
+        "                del self.conversations[conversation_id]\n",
+        "        processor = self.conversations.get(conversation_id)\n"
+        "        if processor is not None:\n"
+        "            try:\n"
+        "                processor.cleanup(termination_reason)\n"
+        "            except Exception as e:\n"
+        "                self.logger.warning(\n"
+        "                    f\"Error cleaning up conversation {conversation_id}: {e}\"\n"
+        "                )\n"
+        "            finally:\n"
+        "                # byova_ces fix: when the caller hangs up, the cancelled stream and\n"
+        "                # CVP's SESSION_END stream can clean up the same call at the same\n"
+        "                # time. The second one used to raise KeyError here. Remove the entry\n"
+        "                # only if it is still this processor (a re-entry may have replaced it).\n"
+        "                if self.conversations.get(conversation_id) is processor:\n"
+        "                    self.conversations.pop(conversation_id, None)\n",
+    ),
 ]
 
-if "byova_ces fix: handle_speech_boundary is a generator" in s:
-    sys.exit("already applied: nothing changed")
+todo = []
 for old, new in EDITS:
+    if new in s:
+        continue  # this edit is already in the file
     n = s.count(old)
     if n != 1:
         sys.exit(f"anchor found {n} times (expected 1), nothing changed:\n{old[:120]}")
-for old, new in EDITS:
+    todo.append((old, new))
+if not todo:
+    sys.exit("already applied: nothing changed")
+for old, new in todo:
     s = s.replace(old, new)
 io.open(path, "w", encoding="utf-8", newline="\n").write(s)
-print("applied 5 edits to", path)
+print(f"applied {len(todo)} edits to", path)

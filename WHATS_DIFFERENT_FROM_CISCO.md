@@ -1,6 +1,6 @@
 # What is different from Cisco's code
 
-**In short:** this is Cisco's BYOVA gateway code (`webex/webex-byova-gateway-python`) with **additions only**. No Cisco logic was removed or rewritten. Every gateway change you had made yourself is kept.
+**In short:** this is Cisco's BYOVA gateway code (`webex/webex-byova-gateway-python`) with **additions**, plus three small fixes to bugs in Cisco's server code (listed in the table below). No other Cisco logic was removed or rewritten. Every gateway change you had made yourself is kept.
 
 The additions:
 - CVP/VVB audio compatibility;
@@ -31,6 +31,7 @@ Your gateway was based on an older Cisco release. Cisco's CES connector needs Ci
 | **`log_end_session_values`:** logs the values of the passed fields | `gecx_connector.py` | Testing only | **Off.** Turn it on only for a test call |
 | **Bug fix: continued caller speech** really opens a new CES turn ([UPDATE_CONTINUED_SPEECH.md](UPDATE_CONTINUED_SPEECH.md)) | `wxcc_gateway_server.py` | Cisco's code never ran the connector's "speech started" step here, so CES never heard the caller and replies were dropped until the 30 s timeout. Same bug in Cisco's current release | Always on (CES only) |
 | **Bug fix: CVP re-entry** after a session ended starts a fresh session | `wxcc_gateway_server.py` | The re-entry was ignored and VVB waited 15 s (`error.noresource`) | Always on |
+| **Bug fix: clean-up race** when the caller hangs up | `wxcc_gateway_server.py` | Two streams cleaning up the same call raised `KeyError` in the log | Always on |
 
 ## Cisco's rules that we follow
 

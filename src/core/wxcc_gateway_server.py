@@ -1663,15 +1663,21 @@ class WxCCGatewayServer(VoiceVirtualAgentServicer):
         self, conversation_id: str, termination_reason: str = "gateway_cleanup"
     ):
         """Clean up a specific conversation."""
-        if conversation_id in self.conversations:
+        processor = self.conversations.get(conversation_id)
+        if processor is not None:
             try:
-                self.conversations[conversation_id].cleanup(termination_reason)
+                processor.cleanup(termination_reason)
             except Exception as e:
                 self.logger.warning(
                     f"Error cleaning up conversation {conversation_id}: {e}"
                 )
             finally:
-                del self.conversations[conversation_id]
+                # byova_ces fix: when the caller hangs up, the cancelled stream and
+                # CVP's SESSION_END stream can clean up the same call at the same
+                # time. The second one used to raise KeyError here. Remove the entry
+                # only if it is still this processor (a re-entry may have replaced it).
+                if self.conversations.get(conversation_id) is processor:
+                    self.conversations.pop(conversation_id, None)
 
     def add_connection_event(
         self, event_type: str, conversation_id: str, agent_id: str, **kwargs

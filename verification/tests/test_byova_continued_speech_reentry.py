@@ -267,3 +267,38 @@ def test_old_stream_does_not_clean_up_the_session_that_replaced_it():
     assert responses[0].prompts[0].text == "Welcome back"
     assert server.conversations.get("guard-conv") is new
     assert new.session_started and not new.can_be_deleted
+
+
+def test_two_streams_cleaning_up_the_same_call_do_not_raise():
+    """Caller hangs up: the cancelled stream and CVP's SESSION_END stream both
+    clean up. The other stream finishes first while this cleanup is running."""
+    router = MagicMock(spec=VirtualAgentRouter)
+    server = WxCCGatewayServer(router)
+    processor = MagicMock()
+
+    def other_stream_finished_first(_reason):
+        server.conversations.pop("race-conv", None)
+
+    processor.cleanup.side_effect = other_stream_finished_first
+    server.conversations["race-conv"] = processor
+
+    server._cleanup_conversation("race-conv", termination_reason="client_cancelled")
+
+    processor.cleanup.assert_called_once_with("client_cancelled")
+    assert "race-conv" not in server.conversations
+
+
+def test_slow_cleanup_does_not_remove_a_session_that_replaced_it():
+    router = MagicMock(spec=VirtualAgentRouter)
+    server = WxCCGatewayServer(router)
+    old, new = MagicMock(), MagicMock()
+
+    def reentry_during_cleanup(_reason):
+        server.conversations["race-conv"] = new
+
+    old.cleanup.side_effect = reentry_during_cleanup
+    server.conversations["race-conv"] = old
+
+    server._cleanup_conversation("race-conv", termination_reason="completed")
+
+    assert server.conversations["race-conv"] is new
