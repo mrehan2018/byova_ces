@@ -1664,6 +1664,12 @@ class GECXStreamingSession:
         allowed = getattr(self.connector, "forward_end_session_fields", None) or []
         if not allowed or not isinstance(metadata, dict):
             return {}
+        if "*" in allowed:
+            # byova_ces dynamic parameters: "*" forwards every field the agent
+            # put in the end_session params, no list of names needed.
+            params = metadata.get("params")
+            metadata = {"params": params if isinstance(params, Mapping) else {}}
+            allowed = list(self._end_session_fields(metadata))
         fields = self._end_session_fields(metadata)
         selected = {k: v for k, v in fields.items() if k in allowed}
         missing = sorted(name for name in allowed if name not in selected)
@@ -2028,10 +2034,20 @@ class GECXConnector(IVendorConnector):
         # CVP session parameters to pass to CES as session variables: a list of
         # names (same name in CES) or a {cvp_name: ces_variable} mapping. Off when empty.
         self.session_variables = config.get("session_variables") or {}
+        # byova_ces dynamic parameters: "auto" sends caller_ani/caller_dnis plus
+        # every non-SIP CVP parameter, no list of names needed.
+        self.session_variables_auto = (
+            isinstance(self.session_variables, str)
+            and self.session_variables.strip().lower() in ("auto", "*")
+        )
+        if isinstance(self.session_variables, str) and not self.session_variables_auto:
+            self.session_variables = [self.session_variables]
         # end_session fields passed to CVP on a transfer (allowlist; summary is always sent)
-        self.forward_end_session_fields = [
-            str(name) for name in (config.get("forward_end_session_fields") or [])
-        ]
+        # byova_ces dynamic parameters: "*" = every field in the end_session params.
+        _forward_fields = config.get("forward_end_session_fields") or []
+        if isinstance(_forward_fields, str):
+            _forward_fields = [_forward_fields]
+        self.forward_end_session_fields = [str(name) for name in _forward_fields]
         # Test aid: also log the VALUES of the forwarded fields. Off by default
         # (Cisco rule: never log values); turn off again after testing.
         self.log_end_session_values = bool(config.get("log_end_session_values", False))
@@ -2458,6 +2474,8 @@ class GECXConnector(IVendorConnector):
         """Map the CVP SESSION_START parameters selected in session_variables."""
         if not self.session_variables:
             return {}
+        if self.session_variables_auto:
+            return self._auto_session_variables(conversation_id, request_data)
         if isinstance(self.session_variables, Mapping):
             mapping = {str(k): str(v) for k, v in self.session_variables.items()}
         else:
@@ -2476,6 +2494,63 @@ class GECXConnector(IVendorConnector):
             f" (not sent by CVP: {missing})" if missing else "",
         )
         return variables
+
+    # byova_ces dynamic parameters -- session_variables: "auto"
+    #   sipHeader.CALL_ANI / sipHeader.CALL_DNIS -> caller_ani / caller_dnis
+    #   every other non-SIP parameter set in the CVP element -> same name in CES
+    #   other sipHeader.* parameters are not sent
+    _AUTO_SIP_VARIABLES = {
+        "sipHeader.CALL_ANI": "caller_ani",
+        "sipHeader.CALL_DNIS": "caller_dnis",
+    }
+    _AUTO_VARIABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+    def _auto_session_variables(
+        self, conversation_id: str, request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        params = (request_data or {}).get("session_params") or {}
+        variables: Dict[str, Any] = {}
+        skipped = []
+        for raw_name, value in params.items():
+            name = str(raw_name)
+            if value in (None, ""):
+                continue
+            if not isinstance(value, (str, int, float, bool)):
+                # structured values (e.g. CVP userData) are not usable as text
+                skipped.append(name)
+                continue
+            if name in self._AUTO_SIP_VARIABLES:
+                variables[self._AUTO_SIP_VARIABLES[name]] = self._sip_user_part(
+                    str(value)
+                )
+            elif name.startswith("sipHeader."):
+                continue
+            elif self._AUTO_VARIABLE_NAME.match(name):
+                variables[name] = str(value)
+            else:
+                skipped.append(name)
+        # a CVP parameter named caller_ani / caller_dnis wins over the SIP header
+        for ces_name in self._AUTO_SIP_VARIABLES.values():
+            if ces_name in params and params[ces_name] not in (None, ""):
+                variables[ces_name] = str(params[ces_name])
+        # names only, never values
+        self.logger.info(
+            "[GECX] Session variables for %s (auto): %s%s",
+            conversation_id,
+            sorted(variables),
+            f" (skipped, name or value not usable: {sorted(skipped)})"
+            if skipped
+            else "",
+        )
+        return variables
+
+    _SIP_URI = re.compile(r"^\s*<?\s*(?:sips?|tel):([^@;>\s]+)", re.IGNORECASE)
+
+    @classmethod
+    def _sip_user_part(cls, value: str) -> str:
+        """'sip:+15551230001@10.0.0.1:5060' -> '+15551230001'; plain values unchanged."""
+        match = cls._SIP_URI.match(value)
+        return match.group(1) if match else value.strip()
 
     def start_conversation(
         self, conversation_id: str, request_data: Dict[str, Any]

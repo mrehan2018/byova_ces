@@ -59,12 +59,17 @@
       # List form keeps the name; mapping form renames: { Name: customer_name }
       # session_variables:
       #   - "Name"
+      # Or send every CVP element parameter plus caller_ani / caller_dnis, no list
+      # (see UPDATE_DYNAMIC_PARAMETERS.md):
+      # session_variables: "auto"
 
       # OPTIONAL - end_session fields sent back to CVP on a transfer, in the
       # TRANSFER_TO_AGENT event metadata (the summary is always sent).
       # forward_end_session_fields:
       #   - "reason"
       #   - "Name"
+      # Or send every field of the end_session params, no list:
+      # forward_end_session_fields: "*"
 
       # Agent name(s) offered to CVP. CVP "Agent ID" must match this exactly.
       agents:
