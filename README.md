@@ -14,6 +14,52 @@ This repo adds a **Google CES (CX Agent Studio) voice agent** to a BYOVA gateway
 | [MANUAL_UPDATE_PARAMETERS.md](MANUAL_UPDATE_PARAMETERS.md) | The same update as 3 small hand edits (or one patch), instead of copying files |
 | [docs/CES_Adapter_Install_Guide_Linux_v2.1.docx](docs/CES_Adapter_Install_Guide_Linux_v2.1.docx) | Full guide: CES agent rules, settings, troubleshooting |
 
+## Latest update: automatic parameter passing (19 November 2026)
+
+Parameters now pass between CVP and CES without listing each name in `config.yaml`. Full steps, checks and undo are in **[UPDATE_DYNAMIC_PARAMETERS.md](UPDATE_DYNAMIC_PARAMETERS.md)**.
+
+| New setting | Direction | Effect |
+|---|---|---|
+| `session_variables: "auto"` | CVP → CES | Sends `caller_ani`, `caller_dnis` and every parameter set in the CVP Virtual Agent Voice element |
+| `forward_end_session_fields: "*"` | CES → CVP | Sends every field in the agent's `end_session` `params` back to CVP |
+
+Both are off until you set them. The lists and mappings you use today behave as before.
+
+### Code changed
+
+One code file: **`src/connectors/gecx_connector.py`**, 78 lines added and 3 replaced, in 5 places. Each place carries the comment `byova_ces dynamic parameters` (edit D is a two-line branch without its own comment).
+
+| Edit | Where in the file | What it does |
+|---|---|---|
+| A | `GECXStreamingSession._forwarded_end_session_fields` | When the setting is `"*"`, takes every field from the `end_session` `params` instead of filtering by a list |
+| B | `GECXConnector.__init__` | Reads `session_variables: "auto"` and sets `session_variables_auto` |
+| C | `GECXConnector.__init__` | Accepts `forward_end_session_fields` written as a plain string (`"*"`) as well as a list |
+| D | `GECXConnector._session_variables_for` | Uses the automatic mapping when `session_variables_auto` is on |
+| E | New: `_auto_session_variables`, `_sip_user_part` | Builds the variable list from the CVP parameters and reduces a SIP address to the number |
+
+Not changed: `wxcc_gateway_server.py`, the router, the base connector class, the audio and speech-detection code, `requirements-ces.txt`.
+
+### Files added or updated in this repo
+
+| File | |
+|---|---|
+| `src/connectors/gecx_connector.py` | The connector with the 5 edits |
+| `tools/apply_dynamic_parameters.py` | Applies the 5 edits to your installed file; stops without writing if your file differs; safe to run twice |
+| `patches/dynamic-parameters.patch` | The same change as a patch |
+| `verification/tests/test_byova_dynamic_parameters.py` | 12 tests for the new settings and for unchanged behaviour of lists, mappings and the default |
+| `UPDATE_DYNAMIC_PARAMETERS.md` | Install steps, naming rules, log lines to check, undo |
+| `config/gecx_connector.snippet.yaml` | Two commented example lines for the new settings |
+
+### Update history
+
+| Date | Update | Code files changed | Guide |
+|---|---|---|---|
+| 19 Nov 2026 | Automatic parameter passing (`"auto"`, `"*"`) | `gecx_connector.py` | [UPDATE_DYNAMIC_PARAMETERS.md](UPDATE_DYNAMIC_PARAMETERS.md) |
+| 9–10 Nov 2026 | Fix: continued caller speech, CVP re-entry, `KeyError` on hang-up | `wxcc_gateway_server.py` | [UPDATE_CONTINUED_SPEECH.md](UPDATE_CONTINUED_SPEECH.md) |
+| 4 Nov 2026 | Log the names of `end_session` params; optional value log for testing | `gecx_connector.py` | [UPDATE_TICKET_NUMBER.md](UPDATE_TICKET_NUMBER.md) |
+| 28 Oct 2026 | Return `end_session` fields to CVP on a normal end | `gecx_connector.py`, `wxcc_gateway_server.py` | [UPDATE_PARAMETERS.md](UPDATE_PARAMETERS.md) |
+| 22 Oct 2026 | First release: CES agent on a CVP / VVB gateway | The 8 files in `src/` | [INSTALL_FOR_YOUR_GATEWAY.md](INSTALL_FOR_YOUR_GATEWAY.md) |
+
 ## Quick install
 
 ```bash
