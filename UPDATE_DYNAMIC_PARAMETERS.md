@@ -13,7 +13,7 @@ After this, adding a parameter needs a change only in the CVP application and in
 
 ## What changes
 
-Only **`src/connectors/gecx_connector.py`** changes: 78 lines added, 3 replaced, in 5 places. No other file, no new package, no change to audio, speech detection, timing or call handling.
+Only **`src/connectors/gecx_connector.py`** changes: 131 lines added, 3 replaced, in 9 places. No other file, no new package, no change to audio, speech detection, timing or call handling.
 
 Both settings are **off until you set them**. The lists and mappings you have today keep working exactly as before, so you can install the code first and switch the config later.
 
@@ -44,6 +44,27 @@ Top-level fields such as `reason` are not sent in this mode, and nested values a
 
 If the agent ends the session without `params`, nothing is returned. That is decided by the agent's instructions, not by the gateway.
 
+## Limits
+
+The two automatic settings have limits, so that an unexpected parameter cannot send a large amount of data to CES or to CVP.
+
+| Limit | Default | Config key (optional) |
+|---|---|---|
+| Number of parameters per call, in each direction | 20 | `dynamic_parameter_max_count` |
+| Length of one value | 256 characters | `dynamic_parameter_max_chars` |
+
+- A value that is too long is **left out, not cut**. A shortened account or ticket number would be a wrong value, and a missing one is easier to notice.
+- When there are too many parameters, the first ones are kept in the order they arrive. `caller_ani` and `caller_dnis` are always counted first.
+- Every name that was left out is written to the log as a warning (names only).
+- The limits apply only to `"auto"` and `"*"`. Names you list yourself in `config.yaml` are not limited, so your current setup behaves as before.
+
+To change a limit, add the key under the same `config:` block, for example:
+
+```yaml
+      dynamic_parameter_max_count: 10
+      dynamic_parameter_max_chars: 100
+```
+
 ## Steps
 
 Pick **one** of the three ways in step 2. All three give the same file.
@@ -56,16 +77,17 @@ B=$GW/backups/pre-dynamic-params-$(date +%Y%m%d-%H%M%S); mkdir -p $B
 cp -p $GW/src/connectors/gecx_connector.py $GW/config/config.yaml $B/
 echo "backup in $B"
 
-# 2a. script (recommended): 5 anchored edits, changes nothing else, safe to run twice
+# 2a. script (recommended): 9 anchored edits, changes nothing else, safe to run twice.
+#     If you installed the first version of this update (19 Nov), it adds only the 4 limit edits.
 python3 /tmp/byova_ces/tools/apply_dynamic_parameters.py $GW/src/connectors/gecx_connector.py
 
-# 2b. or the patch
+# 2b. or the patch (only for a file that has no part of this update yet; the dry run stops otherwise)
 cd $GW && patch -p1 --dry-run < /tmp/byova_ces/patches/dynamic-parameters.patch && patch -p1 < /tmp/byova_ces/patches/dynamic-parameters.patch
 
 # 2c. or copy the whole file (only if your gecx_connector.py is the one from this repo, unchanged)
 cp /tmp/byova_ces/src/connectors/gecx_connector.py $GW/src/connectors/
 
-# 3. check (must print 4, then nothing)
+# 3. check (must print 6, then nothing)
 grep -c "byova_ces dynamic parameters" $GW/src/connectors/gecx_connector.py
 python3 -m py_compile $GW/src/connectors/gecx_connector.py
 ```
@@ -95,6 +117,9 @@ grep -E "Session variables for|end_session fields for CVP" $GW/logs/gateway.log 
 | `... (skipped, name or value not usable: ['userData'])` | These were not sent |
 | `[GECX] end_session fields for CVP: ['ticket_number', 'zipcode']` | These names were returned to CVP |
 
+| `[GECX] Session variables for <id> NOT sent to CES, over the limit (20 parameters, 256 characters each): ['notes']` | These were left out by a limit |
+| `[GECX] end_session fields NOT sent to CVP, over the limit (20 fields, 256 characters each): ['notes']` | Same, for the return direction |
+
 Only names are logged, never values (unless you turned on `log_end_session_values` for a test).
 
 No `end_session fields for CVP` line on a call means the agent sent no `params`. Check the line `EndSession metadata keys` for that call: it must include `params`.
@@ -109,6 +134,6 @@ Then restart the gateway. To turn the feature off without removing the code, put
 
 ## How it was tested
 
-- 12 new tests in `verification/tests/test_byova_dynamic_parameters.py`: both new settings, the name and value rules, names-only logging, and that lists, mappings and the default behave as before.
+- 18 new tests in `verification/tests/test_byova_dynamic_parameters.py`: both new settings, the name and value rules, the two limits, names-only logging, and that lists, mappings and the default behave as before.
 - The connector's existing 92 tests give the same result before and after.
 - Live calls on our lab gateway behind CVP/VVB: the caller's name reached the CES agent in "auto" mode, and `account_name` and `zipcode` came back to CVP in `end_session`.

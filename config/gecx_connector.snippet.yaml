@@ -70,6 +70,9 @@
       #   - "Name"
       # Or send every field of the end_session params, no list:
       # forward_end_session_fields: "*"
+      # Limits for "auto" and "*" (defaults shown; listed names are not limited):
+      # dynamic_parameter_max_count: 20
+      # dynamic_parameter_max_chars: 256
 
       # Agent name(s) offered to CVP. CVP "Agent ID" must match this exactly.
       agents:

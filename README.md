@@ -14,7 +14,7 @@ This repo adds a **Google CES (CX Agent Studio) voice agent** to a BYOVA gateway
 | [MANUAL_UPDATE_PARAMETERS.md](MANUAL_UPDATE_PARAMETERS.md) | The same update as 3 small hand edits (or one patch), instead of copying files |
 | [docs/CES_Adapter_Install_Guide_Linux_v2.1.docx](docs/CES_Adapter_Install_Guide_Linux_v2.1.docx) | Full guide: CES agent rules, settings, troubleshooting |
 
-## Latest update: automatic parameter passing (19 November 2026)
+## Latest update: automatic parameter passing, with limits (20 November 2026)
 
 Parameters now pass between CVP and CES without listing each name in `config.yaml`. Full steps, checks and undo are in **[UPDATE_DYNAMIC_PARAMETERS.md](UPDATE_DYNAMIC_PARAMETERS.md)**.
 
@@ -25,9 +25,11 @@ Parameters now pass between CVP and CES without listing each name in `config.yam
 
 Both are off until you set them. The lists and mappings you use today behave as before.
 
+**Limits (added 20 November):** in these two automatic modes the gateway sends at most 20 parameters per call in each direction, and leaves out any value longer than 256 characters. The names left out are logged. Both limits can be changed in `config.yaml` (`dynamic_parameter_max_count`, `dynamic_parameter_max_chars`). Names you list yourself are not limited. If you installed the 19 November version, run the script again: it adds only the limit edits.
+
 ### Code changed
 
-One code file: **`src/connectors/gecx_connector.py`**, 78 lines added and 3 replaced, in 5 places. Each place carries the comment `byova_ces dynamic parameters` (edit D is a two-line branch without its own comment).
+One code file: **`src/connectors/gecx_connector.py`**, 131 lines added and 3 replaced, in 9 places. Edits A–E add the two settings; edits F–I add the limits.
 
 | Edit | Where in the file | What it does |
 |---|---|---|
@@ -36,6 +38,10 @@ One code file: **`src/connectors/gecx_connector.py`**, 78 lines added and 3 repl
 | C | `GECXConnector.__init__` | Accepts `forward_end_session_fields` written as a plain string (`"*"`) as well as a list |
 | D | `GECXConnector._session_variables_for` | Uses the automatic mapping when `session_variables_auto` is on |
 | E | New: `_auto_session_variables`, `_sip_user_part` | Builds the variable list from the CVP parameters and reduces a SIP address to the number |
+| F | `GECXConnector.__init__` | Reads `dynamic_parameter_max_count` (default 20) and `dynamic_parameter_max_chars` (default 256) |
+| G | `GECXStreamingSession._forwarded_end_session_fields` | Applies the limits in `"*"` mode and logs the names left out |
+| H | `GECXConnector._auto_session_variables` | Applies the limits in `"auto"` mode, caller number first, and logs the names left out |
+| I | New: `_limit_dynamic_parameters` | The limit check used by G and H |
 
 Not changed: `wxcc_gateway_server.py`, the router, the base connector class, the audio and speech-detection code, `requirements-ces.txt`.
 
@@ -43,10 +49,10 @@ Not changed: `wxcc_gateway_server.py`, the router, the base connector class, the
 
 | File | |
 |---|---|
-| `src/connectors/gecx_connector.py` | The connector with the 5 edits |
-| `tools/apply_dynamic_parameters.py` | Applies the 5 edits to your installed file; stops without writing if your file differs; safe to run twice |
+| `src/connectors/gecx_connector.py` | The connector with the 9 edits |
+| `tools/apply_dynamic_parameters.py` | Applies the 9 edits to your installed file (only the missing ones if some are already there); stops without writing if your file differs; safe to run twice |
 | `patches/dynamic-parameters.patch` | The same change as a patch |
-| `verification/tests/test_byova_dynamic_parameters.py` | 12 tests for the new settings and for unchanged behaviour of lists, mappings and the default |
+| `verification/tests/test_byova_dynamic_parameters.py` | 18 tests for the new settings, the limits, and for unchanged behaviour of lists, mappings and the default |
 | `UPDATE_DYNAMIC_PARAMETERS.md` | Install steps, naming rules, log lines to check, undo |
 | `config/gecx_connector.snippet.yaml` | Two commented example lines for the new settings |
 
@@ -54,7 +60,7 @@ Not changed: `wxcc_gateway_server.py`, the router, the base connector class, the
 
 | Date | Update | Code files changed | Guide |
 |---|---|---|---|
-| 19 Nov 2026 | Automatic parameter passing (`"auto"`, `"*"`) | `gecx_connector.py` | [UPDATE_DYNAMIC_PARAMETERS.md](UPDATE_DYNAMIC_PARAMETERS.md) |
+| 19–20 Nov 2026 | Automatic parameter passing (`"auto"`, `"*"`), with count and length limits | `gecx_connector.py` | [UPDATE_DYNAMIC_PARAMETERS.md](UPDATE_DYNAMIC_PARAMETERS.md) |
 | 9–10 Nov 2026 | Fix: continued caller speech, CVP re-entry, `KeyError` on hang-up | `wxcc_gateway_server.py` | [UPDATE_CONTINUED_SPEECH.md](UPDATE_CONTINUED_SPEECH.md) |
 | 4 Nov 2026 | Log the names of `end_session` params; optional value log for testing | `gecx_connector.py` | [UPDATE_TICKET_NUMBER.md](UPDATE_TICKET_NUMBER.md) |
 | 28 Oct 2026 | Return `end_session` fields to CVP on a normal end | `gecx_connector.py`, `wxcc_gateway_server.py` | [UPDATE_PARAMETERS.md](UPDATE_PARAMETERS.md) |

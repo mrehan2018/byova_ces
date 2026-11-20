@@ -7,6 +7,10 @@ Usage: python apply_dynamic_parameters.py <path to gecx_connector.py>
 Every edit is anchored on text that must occur exactly once; nothing else changes.
 Edits that are already in the file are skipped, so running it twice is safe.
 Lists and mappings in config.yaml keep working exactly as before.
+
+Edits A-E add the two settings. Edits F-I add the limits for them
+(dynamic_parameter_max_count, dynamic_parameter_max_chars). A file that already
+has A-E gets only F-I.
 """
 import io
 import sys
@@ -129,18 +133,100 @@ EDITS = [
         "        match = cls._SIP_URI.match(value)\n"
         "        return match.group(1) if match else value.strip()\n",
     ),
+    # F. config: limits for "auto" and "*"
+    (
+        "        self.forward_end_session_fields = [str(name) for name in _forward_fields]\n",
+        "        self.forward_end_session_fields = [str(name) for name in _forward_fields]\n"
+        "        # byova_ces dynamic parameters: limits for \"auto\" and \"*\". Names in a\n"
+        "        # list or mapping are chosen by you and are not limited.\n"
+        "        self.dynamic_parameter_max_count = max(\n"
+        "            1, int(config.get(\"dynamic_parameter_max_count\", 20))\n"
+        "        )\n"
+        "        self.dynamic_parameter_max_chars = max(\n"
+        "            1, int(config.get(\"dynamic_parameter_max_chars\", 256))\n"
+        "        )\n",
+    ),
+    # G. CES -> CVP: apply the limits in "*" mode
+    (
+        "            allowed = list(self._end_session_fields(metadata))\n",
+        "            allowed, over_limit = self.connector._limit_dynamic_parameters(\n"
+        "                self._end_session_fields(metadata)\n"
+        "            )\n"
+        "            if over_limit:\n"
+        "                self.logger.warning(\n"
+        "                    \"[%s] [GECX] end_session fields NOT sent to CVP, over the limit \"\n"
+        "                    \"(%d fields, %d characters each): %s\",\n"
+        "                    self.conversation_id,\n"
+        "                    self.connector.dynamic_parameter_max_count,\n"
+        "                    self.connector.dynamic_parameter_max_chars,\n"
+        "                    sorted(over_limit),\n"
+        "                )\n",
+    ),
+    # H. CVP -> CES: apply the limits in "auto" mode (caller number first)
+    (
+        "        # names only, never values\n"
+        "        self.logger.info(\n"
+        "            \"[GECX] Session variables for %s (auto): %s%s\",\n",
+        "        variables, over_limit = self._limit_dynamic_parameters(\n"
+        "            variables, keep_first=tuple(self._AUTO_SIP_VARIABLES.values())\n"
+        "        )\n"
+        "        if over_limit:\n"
+        "            self.logger.warning(\n"
+        "                \"[GECX] Session variables for %s NOT sent to CES, over the limit \"\n"
+        "                \"(%d parameters, %d characters each): %s\",\n"
+        "                conversation_id,\n"
+        "                self.dynamic_parameter_max_count,\n"
+        "                self.dynamic_parameter_max_chars,\n"
+        "                sorted(over_limit),\n"
+        "            )\n"
+        "        # names only, never values\n"
+        "        self.logger.info(\n"
+        "            \"[GECX] Session variables for %s (auto): %s%s\",\n",
+    ),
+    # I. the helper that applies the limits
+    (
+        "    _SIP_URI = re.compile(r\"^\\s*<?\\s*(?:sips?|tel):([^@;>\\s]+)\", re.IGNORECASE)\n",
+        "    def _limit_dynamic_parameters(\n"
+        "        self, values: Dict[str, Any], keep_first: Tuple[str, ...] = ()\n"
+        "    ) -> Tuple[Dict[str, Any], list]:\n"
+        "        \"\"\"byova_ces dynamic parameters: apply the count and length limits.\n"
+        "\n"
+        "        Returns (kept, names not sent). A value that is too long is left out,\n"
+        "        not cut: a shortened account or ticket number would be a wrong value.\n"
+        "        \"\"\"\n"
+        "        kept: Dict[str, Any] = {}\n"
+        "        over_limit = []\n"
+        "        names = [n for n in keep_first if n in values]\n"
+        "        names += [n for n in values if n not in keep_first]\n"
+        "        for name in names:\n"
+        "            if (\n"
+        "                len(str(values[name])) > self.dynamic_parameter_max_chars\n"
+        "                or len(kept) >= self.dynamic_parameter_max_count\n"
+        "            ):\n"
+        "                over_limit.append(name)\n"
+        "            else:\n"
+        "                kept[name] = values[name]\n"
+        "        return kept, over_limit\n"
+        "\n"
+        "    _SIP_URI = re.compile(r\"^\\s*<?\\s*(?:sips?|tel):([^@;>\\s]+)\", re.IGNORECASE)\n",
+    ),
 ]
 
 MARKERS = [
-    "            allowed = list(self._end_session_fields(metadata))\n",
+    "            metadata = {\"params\": params if isinstance(params, Mapping) else {}}\n",
     "        self.session_variables_auto = (\n",
     "        _forward_fields = config.get(\"forward_end_session_fields\") or []\n",
     "            return self._auto_session_variables(conversation_id, request_data)\n",
     "    def _auto_session_variables(\n",
+    "        self.dynamic_parameter_max_count = max(\n",
+    "            allowed, over_limit = self.connector._limit_dynamic_parameters(\n",
+    "        variables, over_limit = self._limit_dynamic_parameters(\n",
+    "    def _limit_dynamic_parameters(\n",
 ]
 
+assert len(EDITS) == len(MARKERS) == 9
 applied = skipped = 0
-for label, (old, new), marker in zip("ABCDE", EDITS, MARKERS):
+for label, (old, new), marker in zip("ABCDEFGHI", EDITS, MARKERS):
     if marker in s:
         print(f"edit {label}: already applied, skipped")
         skipped += 1

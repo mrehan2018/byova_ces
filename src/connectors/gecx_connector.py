@@ -1669,7 +1669,18 @@ class GECXStreamingSession:
             # put in the end_session params, no list of names needed.
             params = metadata.get("params")
             metadata = {"params": params if isinstance(params, Mapping) else {}}
-            allowed = list(self._end_session_fields(metadata))
+            allowed, over_limit = self.connector._limit_dynamic_parameters(
+                self._end_session_fields(metadata)
+            )
+            if over_limit:
+                self.logger.warning(
+                    "[%s] [GECX] end_session fields NOT sent to CVP, over the limit "
+                    "(%d fields, %d characters each): %s",
+                    self.conversation_id,
+                    self.connector.dynamic_parameter_max_count,
+                    self.connector.dynamic_parameter_max_chars,
+                    sorted(over_limit),
+                )
         fields = self._end_session_fields(metadata)
         selected = {k: v for k, v in fields.items() if k in allowed}
         missing = sorted(name for name in allowed if name not in selected)
@@ -2048,6 +2059,14 @@ class GECXConnector(IVendorConnector):
         if isinstance(_forward_fields, str):
             _forward_fields = [_forward_fields]
         self.forward_end_session_fields = [str(name) for name in _forward_fields]
+        # byova_ces dynamic parameters: limits for "auto" and "*". Names in a
+        # list or mapping are chosen by you and are not limited.
+        self.dynamic_parameter_max_count = max(
+            1, int(config.get("dynamic_parameter_max_count", 20))
+        )
+        self.dynamic_parameter_max_chars = max(
+            1, int(config.get("dynamic_parameter_max_chars", 256))
+        )
         # Test aid: also log the VALUES of the forwarded fields. Off by default
         # (Cisco rule: never log values); turn off again after testing.
         self.log_end_session_values = bool(config.get("log_end_session_values", False))
@@ -2533,6 +2552,18 @@ class GECXConnector(IVendorConnector):
         for ces_name in self._AUTO_SIP_VARIABLES.values():
             if ces_name in params and params[ces_name] not in (None, ""):
                 variables[ces_name] = str(params[ces_name])
+        variables, over_limit = self._limit_dynamic_parameters(
+            variables, keep_first=tuple(self._AUTO_SIP_VARIABLES.values())
+        )
+        if over_limit:
+            self.logger.warning(
+                "[GECX] Session variables for %s NOT sent to CES, over the limit "
+                "(%d parameters, %d characters each): %s",
+                conversation_id,
+                self.dynamic_parameter_max_count,
+                self.dynamic_parameter_max_chars,
+                sorted(over_limit),
+            )
         # names only, never values
         self.logger.info(
             "[GECX] Session variables for %s (auto): %s%s",
@@ -2543,6 +2574,28 @@ class GECXConnector(IVendorConnector):
             else "",
         )
         return variables
+
+    def _limit_dynamic_parameters(
+        self, values: Dict[str, Any], keep_first: Tuple[str, ...] = ()
+    ) -> Tuple[Dict[str, Any], list]:
+        """byova_ces dynamic parameters: apply the count and length limits.
+
+        Returns (kept, names not sent). A value that is too long is left out,
+        not cut: a shortened account or ticket number would be a wrong value.
+        """
+        kept: Dict[str, Any] = {}
+        over_limit = []
+        names = [n for n in keep_first if n in values]
+        names += [n for n in values if n not in keep_first]
+        for name in names:
+            if (
+                len(str(values[name])) > self.dynamic_parameter_max_chars
+                or len(kept) >= self.dynamic_parameter_max_count
+            ):
+                over_limit.append(name)
+            else:
+                kept[name] = values[name]
+        return kept, over_limit
 
     _SIP_URI = re.compile(r"^\s*<?\s*(?:sips?|tel):([^@;>\s]+)", re.IGNORECASE)
 
